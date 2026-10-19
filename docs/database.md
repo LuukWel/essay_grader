@@ -46,28 +46,68 @@ Each diagram edge is a declared FK. Optional topic/event essay references may be
 The four result caches are independent of sessions and have no FKs.
 
 ```mermaid
+---
+config:
+  layout: elk
+  theme: base
+  look: classic
+  er:
+    nodeSpacing: 55
+    rankSpacing: 100
+    minEntityWidth: 130
+    minEntityHeight: 44
+    entityPadding: 12
+    fontSize: 14
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: LINEAR_SEGMENTS
+    straightenEdges: true
+    lineHops: true
+---
 erDiagram
+    direction LR
+    rubrics
+    sessions
+    essays
+    rubric_criteria
+    rubric_levels
+    grades
+    benchmarks
+    teacher_highlights
+    topics
+    topic_assignments
+    essay_similarities
+    pipeline_runs
+    action_logs
+
     rubrics ||--o{ rubric_criteria : "rubric_id"
     rubric_criteria ||--o{ rubric_levels : "rubric_id, criterion_id"
     rubrics ||--o{ sessions : "rubric_id"
     sessions ||--o{ essays : "session_id"
+    essays ||--o{ grades : "essay_id, session_id"
+    rubric_criteria ||--o{ grades : "rubric_id, criterion_id"
+    sessions ||--o{ grades : "session_id, rubric_id"
+    essays ||--o{ benchmarks : "essay_id, session_id"
+    rubric_criteria ||--o{ benchmarks : "rubric_id, criterion_id"
+    sessions ||--o{ benchmarks : "session_id, rubric_id"
+    essays ||--o{ teacher_highlights : "essay_id, session_id"
+    rubric_criteria ||--o{ teacher_highlights : "rubric_id, criterion_id"
+    sessions ||--o{ teacher_highlights : "session_id, rubric_id"
     sessions ||--o{ topics : "session_id"
     essays ||--o{ topic_assignments : "essay_id, session_id"
     topics |o--o{ topic_assignments : "topic_id, session_id"
-    essays ||--o{ grades : "essay_id, session_id"
-    sessions ||--o{ grades : "session_id, rubric_id"
-    rubric_criteria ||--o{ grades : "rubric_id, criterion_id"
-    essays ||--o{ benchmarks : "essay_id, session_id"
-    sessions ||--o{ benchmarks : "session_id, rubric_id"
-    rubric_criteria ||--o{ benchmarks : "rubric_id, criterion_id"
-    essays ||--o{ teacher_highlights : "essay_id, session_id"
-    sessions ||--o{ teacher_highlights : "session_id, rubric_id"
-    rubric_criteria ||--o{ teacher_highlights : "rubric_id, criterion_id"
     essays ||--o{ essay_similarities : "essay_id_a, session_id"
     essays ||--o{ essay_similarities : "essay_id_b, session_id"
     sessions ||--o{ pipeline_runs : "session_id"
     sessions ||--o{ action_logs : "session_id"
     essays |o--o{ action_logs : "essay_id, session_id"
+
+    classDef rubric fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+    classDef study fill:#ecfdf5,stroke:#059669,color:#064e3b
+    classDef operations fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95
+    class rubrics,rubric_criteria,rubric_levels rubric
+    class sessions,essays,grades,benchmarks,teacher_highlights,topics,topic_assignments,essay_similarities study
+    class pipeline_runs,action_logs operations
 ```
 
 Composite FKs keep essay/topic references within the session and grade/benchmark/highlight
