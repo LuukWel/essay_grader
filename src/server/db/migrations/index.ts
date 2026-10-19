@@ -6,5 +6,6 @@ import { integrity } from './002-integrity';
 import { modelResults } from './003-model-results';
 import { pipelineRuns } from './004-pipeline-runs';
 import { rubricsAndTopicAssignments } from './005-rubrics-and-topic-assignments';
+import { gradeConsistency } from './006-grade-consistency';
 
-export const MIGRATIONS: Migration[] = [baseline, integrity, modelResults, pipelineRuns, rubricsAndTopicAssignments];
+export const MIGRATIONS: Migration[] = [baseline, integrity, modelResults, pipelineRuns, rubricsAndTopicAssignments, gradeConsistency];

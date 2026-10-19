@@ -112,13 +112,15 @@ export function getSessionStats(sessionId: string): SessionStats {
   const { totalEssays, gradedEssays, avgGrade } = db.prepare(`
     SELECT COUNT(*) AS totalEssays,
            SUM(grading_status = 'graded') AS gradedEssays,
-           AVG(overall_grade) AS avgGrade
-    FROM essays WHERE session_id = ?
+           AVG(CASE WHEN e.grading_status = 'graded' THEN s.overall_grade END) AS avgGrade
+    FROM essays e JOIN essay_scores s ON s.essay_id = e.id WHERE e.session_id = ?
   `).get(sessionId) as { totalEssays: number; gradedEssays: number | null; avgGrade: number | null };
 
-  // Buckets are on the displayed /10 scale (overall_grade is stored on /5).
+  // Buckets use the displayed /10 scale; criterion scores use /5.
   const rows = db.prepare(
-    'SELECT ROUND(overall_grade * 2) as bucket, COUNT(*) as cnt FROM essays WHERE session_id = ? AND overall_grade IS NOT NULL GROUP BY bucket'
+    `SELECT ROUND(s.overall_grade * 2) as bucket, COUNT(*) as cnt
+     FROM essays e JOIN essay_scores s ON s.essay_id = e.id
+     WHERE e.session_id = ? AND e.grading_status = 'graded' AND s.overall_grade IS NOT NULL GROUP BY bucket`
   ).all(sessionId) as { bucket: number; cnt: number }[];
 
   const gradeDistribution: Record<number, number> = {};

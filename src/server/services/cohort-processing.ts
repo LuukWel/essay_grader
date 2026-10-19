@@ -85,7 +85,7 @@ export function startCohortProcessing(sessionId: string, deps: CohortDeps = defa
     sessionId,
     type: 'cohort_processing',
     instanceId: INSTANCE_ID,
-    inputHash: runInputHash(essays.map((e) => ({ id: datasetId(e), text: e.pdf_content })), config),
+    inputHash: runInputHash(essays.map((e) => ({ id: datasetId(e), text: e.essay_text })), config),
     config,
     expectedItems: essays.length,
   });
@@ -135,12 +135,12 @@ type FailFn = (essay: Essay, step: string, err: unknown) => void;
 
 async function summarise(essays: Essay[], deps: CohortDeps, fail: FailFn): Promise<void> {
   for (const essay of essays) {
-    const inputs = { contentHash: contentHash(essay.pdf_content), model: deps.summaryModel, promptVersion: SUMMARY_PROMPT_VERSION };
+    const inputs = { contentHash: contentHash(essay.essay_text), model: deps.summaryModel, promptVersion: SUMMARY_PROMPT_VERSION };
     const key = summaryKey(inputs);
     try {
       let summary = getSummary(key);
       if (!summary) {
-        summary = (await deps.summarise(essay.pdf_content)).trim();
+        summary = (await deps.summarise(essay.essay_text)).trim();
         if (!summary) throw new Error('the model returned an empty summary');
         saveSummary({ key, ...inputs }, summary);
       }
@@ -159,7 +159,7 @@ async function assignTopics(session: Session, essays: Essay[], deps: CohortDeps)
   const research = session.use_precomputed_topics ? loadPrecomputedTopics(session.essay_set, k) : null;
   const result = research && research.topics.length > 0
     ? research
-    : await deps.topicModel(session.essay_set, k, essays.map((e) => ({ tsvId: datasetId(e), text: e.pdf_content })));
+    : await deps.topicModel(session.essay_set, k, essays.map((e) => ({ tsvId: datasetId(e), text: e.essay_text })));
 
   // Topics and assignments in one transaction.
   let unassigned = 0;
@@ -185,12 +185,12 @@ async function embed(essays: Essay[], deps: CohortDeps, fail: FailFn): Promise<{
 
   const vectors: { id: string; vec: number[] }[] = [];
   for (const essay of essays) {
-    const inputs = { contentHash: contentHash(essay.pdf_content), model: deps.embeddingModel, inputVersion: deps.embeddingInputVersion };
+    const inputs = { contentHash: contentHash(essay.essay_text), model: deps.embeddingModel, inputVersion: deps.embeddingInputVersion };
     const key = embeddingKey(inputs);
     try {
       let vec = getEmbedding(key);
       if (!vec) {
-        vec = await deps.embed(essay.pdf_content);
+        vec = await deps.embed(essay.essay_text);
         if (vec.length === 0 || !vec.every((x) => Number.isFinite(x))) throw new Error('the model returned an invalid embedding');
         if (dimensions !== null && vec.length !== dimensions) {
           throw new Error(`the model returned ${vec.length} dimensions, expected ${dimensions}`);

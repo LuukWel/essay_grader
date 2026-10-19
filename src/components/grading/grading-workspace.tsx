@@ -230,6 +230,20 @@ export default function GradingWorkspace({
           error: result.error,
         };
 
+        // Save the initial model result before it can be revised. The database owns
+        // original_ai_score; later saves cannot replace it or clear teacher fields.
+        if (studySession && preloadedEssay && result.score !== null) {
+          const saved = await sendJson<{ grade: SavedGrade }>(`/api/sessions/${studySession.sessionId}/grades`, 'POST', {
+            essayId: preloadedEssay.id,
+            criterionName: criterion.name,
+            criterionId: criterion.id,
+            ai_score: result.score,
+            ai_justification: Array.isArray(result.justification) ? result.justification.join('\n') : result.justification,
+            evidence_json: JSON.stringify(newAssessment.evidence),
+          });
+          newAssessment.originalAiScore = saved.grade.original_ai_score;
+        }
+
         setCriteriaAssessments((prev) => ({
           ...prev,
           [criterion.name]: newAssessment,
@@ -242,7 +256,7 @@ export default function GradingWorkspace({
         if (gradingInProgress.current.size === 0) setIsLlmActive(false);
       }
     },
-    [pdfContent, rubricContent, contextList, assessmentType, assessmentLength],
+    [pdfContent, rubricContent, contextList, assessmentType, assessmentLength, studySession, preloadedEssay],
   );
 
   // Process pending action once pdfContent is ready
@@ -340,7 +354,6 @@ export default function GradingWorkspace({
         criterionId: criterion.id,
         teacher_score: teacherScore,
         ai_score: assessment.aiScore ?? null,
-        original_ai_score: assessment.originalAiScore ?? null,
         teacher_justification: teacherJustification || null,
         ai_justification: justText || null,
         evidence_json: assessment.evidence?.length ? JSON.stringify(assessment.evidence) : null,
@@ -494,7 +507,7 @@ export default function GradingWorkspace({
     const tScores = rubricCriteria
       .map((c) => teacherScores[c.name])
       .filter((s): s is number => s != null);
-    const avgGrade = tScores.length > 0
+    let avgGrade = tScores.length > 0
       ? Math.round((tScores.reduce((sum, s) => sum + s, 0) / tScores.length) * 10) / 10
       : null;
 
@@ -515,10 +528,11 @@ export default function GradingWorkspace({
 
     if (studySession && preloadedEssay) {
       try {
-        await sendJson(`/api/sessions/${studySession.sessionId}/essays/${preloadedEssay.id}`, 'PATCH', {
+        const saved = await sendJson<{ essay: { overall_grade: number | null } }>(`/api/sessions/${studySession.sessionId}/essays/${preloadedEssay.id}`, 'PATCH', {
           grading_status: 'graded',
-          overall_grade: avgGrade,
         });
+        avgGrade = saved.essay.overall_grade;
+        overall.overallGrade = avgGrade ?? '—';
       } catch (err) {
         throw new Error(saveFailedMessage('Essay completion', err));
       }

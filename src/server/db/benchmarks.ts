@@ -44,7 +44,8 @@ export function setBenchmark(
 /** Benchmarks of one criterion, with the essay's filename and summary. */
 export function getBenchmarks(sessionId: string, criterionId: number): BenchmarkWithEssay[] {
   return getDb().prepare(`
-    SELECT b.*, rc.name AS criterion_name, CAST(b.score AS TEXT) AS benchmark_type, e.filename, e.summary
+    SELECT b.*, rc.name AS criterion_name, CAST(b.score AS TEXT) AS benchmark_type,
+           'essay-' || e.dataset_essay_id AS filename, e.summary
     FROM benchmarks b
     JOIN rubric_criteria rc USING (rubric_id, criterion_id)
     JOIN essays e ON e.id = b.essay_id

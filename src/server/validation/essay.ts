@@ -5,7 +5,7 @@ const GRADING_STATUSES = ['pending', 'grading', 'graded'] as const;
 export type GradingStatus = (typeof GRADING_STATUSES)[number];
 
 export interface EssayUpdate {
-  grading?: { status: GradingStatus; overallGrade: number | null };
+  grading?: { status: GradingStatus };
   isFlagged?: boolean;
   /** The teacher moves the essay to this topic (null: no topic). */
   topic?: { topicId: number | null };
@@ -30,7 +30,8 @@ export function validateEssayUpdate(
     if (grade !== null && (typeof grade !== 'number' || !Number.isFinite(grade) || grade < min || grade > max)) {
       return invalid(`overall_grade must be a number from ${min} to ${max}, or null`);
     }
-    update.grading = { status: body.grading_status as GradingStatus, overallGrade: grade as number | null };
+    // Accept older clients' averages for compatibility, but never store their value.
+    update.grading = { status: body.grading_status as GradingStatus };
   }
 
   if (body.is_flagged !== undefined) {

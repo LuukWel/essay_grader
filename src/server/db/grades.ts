@@ -19,7 +19,7 @@ export interface Grade {
 }
 
 const GRADE_FIELDS = [
-  'teacher_score', 'ai_score', 'original_ai_score',
+  'teacher_score', 'ai_score',
   'teacher_justification', 'ai_justification', 'evidence_json',
 ] as const;
 
@@ -30,7 +30,8 @@ const GRADE_SELECT = `
 
 /**
  * Inserts or updates the grade for one essay and criterion. Fields left undefined keep their
- * stored value (null on a new row). rubric_id is taken from the session.
+ * stored value (null on a new row). rubric_id is taken from the session. SQLite records
+ * the first non-null AI score and rejects later attempts to change that original.
  */
 export function upsertGrade(
   sessionId: string,
@@ -39,7 +40,6 @@ export function upsertGrade(
   data: {
     teacher_score?: number | null;
     ai_score?: number | null;
-    original_ai_score?: number | null;
     teacher_justification?: string | null;
     ai_justification?: string | null;
     evidence_json?: string | null;

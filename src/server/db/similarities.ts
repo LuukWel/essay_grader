@@ -31,13 +31,14 @@ export function getSimilarEssays(sessionId: string, essayId: string, limit = 5):
   return getDb().prepare(`
     SELECT
       es.essay_id_b AS essay_id,
-      e.filename,
+      'essay-' || e.dataset_essay_id AS filename,
       es.similarity_score,
       e.grading_status,
-      e.overall_grade,
+      s.overall_grade,
       e.summary
     FROM essay_similarities es
     JOIN essays e ON e.id = es.essay_id_b
+    JOIN essay_scores s ON s.essay_id = e.id
     WHERE es.session_id = ? AND es.essay_id_a = ?
     ORDER BY es.similarity_score DESC
     LIMIT ?

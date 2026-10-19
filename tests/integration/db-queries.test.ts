@@ -7,6 +7,7 @@ import { getEssaysBySession, updateEssayGrade, updateEssaySummary } from '@/serv
 import { createTeacherHighlight, deleteTeacherHighlight, getTeacherHighlights } from '@/server/db/highlights';
 import { getSessionProgress, getSessionStats } from '@/server/db/sessions';
 import { createSessionWithEssays } from '@/server/services/session-service';
+import { upsertGrade } from '@/server/db/grades';
 import { TEST_RUBRIC } from '../helpers';
 
 let sessionId: string;
@@ -28,8 +29,10 @@ describe('session statistics and progress', () => {
   it('counts graded essays and averages their grades', () => {
     expect(getSessionStats(sessionId)).toEqual({ totalEssays: 3, gradedEssays: 0, avgGrade: null, gradeDistribution: {} });
 
-    updateEssayGrade(essayIds[0], 'graded', 4);
-    updateEssayGrade(essayIds[1], 'graded', 3);
+    upsertGrade(sessionId, essayIds[0], 1, { teacher_score: 4 });
+    upsertGrade(sessionId, essayIds[1], 1, { teacher_score: 3 });
+    updateEssayGrade(essayIds[0], 'graded');
+    updateEssayGrade(essayIds[1], 'graded');
     expect(getSessionStats(sessionId)).toEqual({
       totalEssays: 3, gradedEssays: 2, avgGrade: 3.5, gradeDistribution: { 6: 1, 8: 1 },
     });

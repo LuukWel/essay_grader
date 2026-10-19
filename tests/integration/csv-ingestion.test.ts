@@ -55,7 +55,7 @@ describe('createSessionWithEssays', () => {
     expect(essays.map((e) => e.filename)).toEqual(['essay-V01', 'essay-V02', 'essay-V03', 'essay-V04', 'essay-V05']);
 
     const v02 = essays[1];
-    expect(v02.pdf_content).toBe('She said "no" to the dress code.\nIt was a short, two-line essay.');
+    expect(v02.essay_text).toBe('She said "no" to the dress code.\nIt was a short, two-line essay.');
     expect(v02.word_count).toBe(13);
     expect(v02.essay_prompt).toBe('Uniforms');
     expect(essays[0].word_count).toBe(10); // counted from the text: no word_count given
@@ -97,7 +97,7 @@ describe('createSessionWithEssays', () => {
   it('rolls back the session and earlier essays when an insert fails halfway', () => {
     // Make the database reject the 4th essay, after the session and 3 essays are inserted.
     getDb().exec(`
-      CREATE TRIGGER fail_on_essay BEFORE INSERT ON essays WHEN NEW.filename = 'essay-V04'
+      CREATE TRIGGER fail_on_essay BEFORE INSERT ON essays WHEN NEW.dataset_essay_id = 'V04'
       BEGIN SELECT RAISE(ABORT, 'simulated insert failure'); END;
     `);
 

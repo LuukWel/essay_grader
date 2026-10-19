@@ -1,222 +1,146 @@
 # CohortEssayGrader
 
-An essay grading assistant that runs locally. You grade the essays; a local model (via [Ollama](https://ollama.com)) suggests a score, justification and supporting quotes for each rubric criterion. Quotes are checked against the essay text and flagged if they can't be found.
+A local essay-grading assistant built for a master's thesis study. Ollama suggests scores,
+explanations and evidence quotes; the teacher sets the final scores.
 
-There are two modes:
+- **Baseline:** grade essays from a list.
+- **Dashboard:** browse topic groups, summaries, similar essays and benchmark essays before grading.
 
-- **Baseline:** grade the essays one at a time.
-- **Dashboard:** start from an overview of the whole set, with essays grouped by topic, a panel of similar essays, and benchmark essays to compare against.
+Both modes support editing assessments, highlighting text and precomputing AI grades.
+Sessions and saved grades live in SQLite. Research events and a separate browser recorder
+support later analysis. Quote checks are heuristic; they do not prove evidence is verbatim.
 
-Sessions, grades and logs are stored in a local SQLite file (`data/grading.db`). No essay text leaves your machine.
+[Architecture](docs/architecture.md) · [Data flow](docs/data-flow.md) ·
+[Database](docs/database.md) · [Testing](docs/testing.md)
 
-The app was built for a master's thesis study comparing the two modes; it records what the grader does for later analysis. See [docs/contribution.md](docs/contribution.md) for who built which part.
-
-## Features
-
-- **AI-assisted grading per criterion.** The model proposes a score, a justification and quotes; the grader sets the final score, edits the justification, highlights passages and can ask the model to revise its score.
-- **Quote checking.** Every quote the model gives is looked up in the essay; quotes that cannot be found are flagged.
-- **Topic groups (Dashboard).** Essays are clustered by topic (BGE embeddings, KMeans, keywords, a label written by a local model). The grader can move essays between topics; the model's grouping is kept next to the corrections.
-- **Similar essays and benchmarks (Dashboard).** The five most similar essays for each essay, and a benchmark essay per criterion and score to compare against.
-- **AI grades in advance.** With **Pre-compute AI assessments** on the setup screen, every essay is graded by the model before the session starts; failed items are listed and can be retried.
-- **Research data.** Every grading action is logged; the export holds sessions, grades, topic history, similarities and the event log.
-
-## How it works
-
-```text
-Browser (React UI)
-   │  JSON over HTTP
-   ▼
-API routes (src/app/api) ──► validation (src/server/validation)
-   │
-   ▼
-services (src/server/services): session import, grade saving,
-   │                            cohort pipeline, AI grade precompute
-   ├──► data access (src/server/db) ──► SQLite (data/grading.db)
-   └──► integrations (src/server/integrations)
-            ├─ Ollama: grading, summaries, embeddings
-            └─ python/topic_model.py: topic groups (calls Ollama for labels)
-```
-
-- Model results (summaries, embeddings, AI assessments, topic groups) are stored and reused. Each is identified by everything that produced it: the essay text, the model, the prompt version, the criterion definition, the preprocessing. Changing any of these produces a new result instead of reusing an old one.
-- The two background pipelines (Dashboard processing and AI grades in advance) record every run with how many items succeeded and failed. A run where some items failed is reported as `partial`, and a retry redoes only what is missing.
-
-More: [architecture](docs/architecture.md) · [data flow](docs/data-flow.md) · [database](docs/database.md) · [testing](docs/testing.md)
-
-## Data model
-
-SQLite with versioned migrations (`src/server/db/migrations/`); the resulting schema is in [`src/server/db/schema.sql`](src/server/db/schema.sql).
-
-- **Rubric:** `rubrics`, `rubric_criteria`, `rubric_levels`. Versioned; each session keeps the rubric it started with.
-- **Grading:** `sessions`, `essays`, `grades`, `benchmarks`, `teacher_highlights`.
-- **Topics:** `topics`, and `topic_assignments`, the history of which topic each essay is in, by the model or the grader.
-- **Derived data:** `essay_similarities`, and the stored model results `essay_summaries`, `essay_embeddings`, `ai_assessments`, `topic_models`.
-- **Records:** `action_logs` (what the grader did), `pipeline_runs` (what the background pipelines did).
-
-Foreign keys include the session, so a grade, highlight or similarity can only refer to an essay of its own session. Criteria are referenced together with the rubric, so a grade can only use a criterion of that session's rubric. Scores, statuses and ranges are checked by the database as well as by the app. Details: [docs/database.md](docs/database.md).
-
-## Requirements
-
-- Node.js 22 or newer (24 LTS tested)
-- Ollama
-- Python 3.11 or newer (Dashboard mode only)
-- 16 GB of RAM
-
-A GPU with 8 GB+ of VRAM is recommended. With a smaller GPU everything works, but slowly: on a
-GTX 1650 (4 GB) one AI assessment takes about a minute.
-
-### Versions
-
-| Component | Version | Notes |
-|---|---|---|
-| Node.js | 24.20.0 | In `.nvmrc`; `package.json` requires >= 22. `better-sqlite3` 12 ships prebuilt binaries for Node 22+ only; on older Node, `npm ci` has to compile it and needs a C++ build toolchain. |
-| npm | 11.19.0 | Dependencies locked in `package-lock.json`; install with `npm ci`. |
-| Python | 3.11.7 | Dashboard mode only. scikit-learn 1.9 requires Python 3.11 or newer. |
-| sentence-transformers / scikit-learn / torch | 6.1.0 / 1.9.1 / 2.14.1 | Pinned in `requirements.txt`. |
-| spaCy + `en_core_web_sm` | optional | Lemmatised topic keywords (research setup). Without it, scikit-learn stopwords are used; the topic script logs which one ran. |
-| Ollama | 0.31.1 | |
-| Grading model | `qwen2.5:7b` | `OLLAMA_MODEL` |
-| Similarity embedding model | `nomic-embed-text` | `OLLAMA_EMBED_MODEL` |
-| Topic label model | `gemma2:9b` | `TOPIC_LLM_MODEL` |
-| Topic clustering embeddings | `BAAI/bge-large-en-v1.5` | `TOPIC_EMBED_MODEL`, from Hugging Face |
+[Database flowchart](docs/database-flowchart.md) shows how the tables connect.
 
 ## Setup
 
+Requires Node.js 22+, Ollama, and Python 3.11+ for live Dashboard topic generation.
+JavaScript versions are locked in `package-lock.json`; Python pins are in `requirements.txt`.
+
+From the project root:
+
 ```bash
-git clone https://github.com/LuukWell/CohortEssayGrader.git
-cd CohortEssayGrader
 npm ci
+ollama pull qwen2.5:7b
 ```
 
-Pull the models (the last two are only needed for Dashboard mode):
+Dashboard also uses these Ollama models:
 
 ```bash
-ollama pull qwen2.5:7b
 ollama pull nomic-embed-text
 ollama pull gemma2:9b
 ```
 
-For Dashboard mode, install the Python packages for the topic script in a virtual environment:
+For live topics, create a Python environment and install its packages:
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt            # Windows: .venv\Scripts\pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-The first topic run also downloads `BAAI/bge-large-en-v1.5` (about 1.3 GB) from Hugging Face.
+On Windows, use `.venv\Scripts\python.exe` in place of `.venv/bin/python`.
+The first topic run downloads `BAAI/bge-large-en-v1.5` through SentenceTransformer.
+spaCy and `en_core_web_sm` are optional; without them, keyword extraction uses sklearn
+stopwords. Keep that choice consistent when comparing topic results.
 
-Copy the settings template. The defaults match the models above.
+Create `.env.local` from [`.env.example`](.env.example) if it does not exist. Set
+`TOPIC_PYTHON` to the environment's executable, for example:
 
-```bash
-cp .env.example .env.local      # Windows: copy .env.example .env.local
+```dotenv
+TOPIC_PYTHON=.venv/bin/python
 ```
 
-Set `TOPIC_PYTHON` in `.env.local` to the Python that has the packages, e.g. `TOPIC_PYTHON=.venv/bin/python` (Windows: `.venv/Scripts/python.exe`).
-
-Start the app and open <http://localhost:3000>:
+On Windows, use `TOPIC_PYTHON=.venv/Scripts/python.exe`. Keep Ollama running, then start:
 
 ```bash
 npm run dev
 ```
 
-On the setup screen, enter a participant ID, choose a mode and the **DEMO** essay set, and start.
+Open <http://localhost:3000>, enter a participant ID and choose the **DEMO** set.
+In PowerShell, use `npm.cmd` if execution policy blocks `npm.ps1`.
+For production, run `npm run build` followed by `npm start`.
 
 ## Configuration
 
-Settings are read from `.env.local` (template: `.env.example`).
+Edit `.env.local` and restart the server.
 
-| Variable | Default | Used for |
+| Variable | Default | Purpose |
 |---|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | all Ollama calls |
-| `OLLAMA_MODEL` | `qwen2.5:7b` | AI grading, score revision, essay summaries |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | similar essays |
-| `TOPIC_LLM_MODEL` | `gemma2:9b` | topic labels |
-| `TOPIC_EMBED_MODEL` | `BAAI/bge-large-en-v1.5` | topic clustering |
-| `TOPIC_PYTHON` | `python` | the Python that runs `python/topic_model.py` |
-| `GRADING_DB_PATH` | `data/grading.db` | database file |
-| `LLM_PRECOMPUTE_TIMEOUT_MS` | `180000` | time allowed per AI assessment when grading in advance |
-| `TOPIC_MODEL_TIMEOUT_MS` | `900000` | time allowed for the topic script |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Grading, revision and summaries |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Similar-essay vectors |
+| `TOPIC_LLM_MODEL` | `gemma2:9b` | Topic labels |
+| `TOPIC_EMBED_MODEL` | `BAAI/bge-large-en-v1.5` | Topic clustering vectors |
+| `TOPIC_PYTHON` | `python` | Topic-script interpreter |
+| `GRADING_DB_PATH` | `data/grading.db` | SQLite file |
+| `LLM_PRECOMPUTE_TIMEOUT_MS` | `180000` | Per-assessment precompute timeout |
+| `TOPIC_MODEL_TIMEOUT_MS` | `900000` | Python subprocess timeout |
 
-## Essays
+Model requests go to the configured Ollama endpoint. The default is local; a remote URL
+sends essay content to that server. Changing a model changes cache identities, but does not
+recompute an already completed session or replace existing AI grades.
 
-Each `data/subset_<NAME>.csv` file appears on the setup screen as "Set NAME".
+## Essay sets and rubric
 
-The repository ships one set, **DEMO** (`data/subset_DEMO.csv`): 24 short argumentative essays on three prompts (school uniforms, phones in class, homework), deliberately of mixed quality; one of them drifts off topic. They were written for this repository and contain no student or study data.
-
-The format:
+Add a UTF-8 `data/subset_<NAME>.csv` file; the name may contain letters, numbers, `_` and `-`.
+DEMO contains 24 synthetic essays on uniforms, classroom phones and homework, with no study data.
 
 ```csv
 id,prompt,essay
-S-001,Essay Prompt 1,The full essay text.
+S-001,Phones in class,"The full essay, including quoted commas."
 ```
 
-`id` and `essay` are required, `prompt` and `word_count` are optional. Other columns are ignored. Fields containing commas, quotes or line breaks must be wrapped in double quotes, with quotes inside doubled (`""`).
+`id` and `essay` are required; `prompt` and `word_count` are optional. IDs must be unique
+within the file. Quoted fields may contain commas, doubled quotes and line breaks.
+The whole file is validated before import; an invalid file creates no session or essays.
+Dashboard needs at least as many essays as the selected topic count.
 
-The whole file is checked before anything is stored: every row needs a non-empty `id` and `essay`, the same number of fields as the header, and an `id` that is unique in the file. If anything is wrong, no session is created and the setup screen lists the problems with their line numbers.
+The rubric text is [`data/rubric/rubric.txt`](data/rubric/rubric.txt); its criteria and levels
+are in [`src/lib/llm-config.ts`](src/lib/llm-config.ts). Change `RUBRIC_ID` when changing
+either definition. Stored rubric versions cannot be changed through the app; existing
+sessions keep their original version.
 
-Stored model results are identified by the essay **text**, not its `id`: editing an essay simply produces new results.
+Grading prompts live in [`llm-grading.ts`](src/server/services/llm-grading.ts).
+Bump `GRADING_PROMPT_VERSION` after changing them. The score scale is fixed at 1–5 in the
+database and prompt; another scale needs code and schema changes.
 
-For topic groups, use at least as many essays as the number of topics you choose. Around 20 or more works best.
+## Stored data
 
-## Changing the rubric
+The server opens and migrates SQLite on first use. Back up an existing database before
+upgrading; copy it while the app is stopped. To reset server data, stop the app and remove
+the database and its `-wal`/`-shm` companion files after backing up anything needed.
 
-The rubric is defined in two places:
+The browser's participant-keyed CSV recorder is separate and survives session completion.
+CSV/JSON exports contain selected research data; they are not complete database backups.
+See [database.md](docs/database.md) for tables, cache identities and migrations.
 
-- `data/rubric/rubric.txt`: the rubric text shown to the grader.
-- `src/lib/llm-config.ts`: `RUBRIC_ID` and `RUBRIC_CRITERIA`, the criteria, score range and level descriptions the model grades against.
-
-A rubric is stored in the database with the first session that uses it, and a stored rubric is never changed. **When you change either file, also change `RUBRIC_ID`** (e.g. to `essay-v2`). Otherwise starting a session fails with a message saying that rubric is already stored with different contents. Existing sessions keep the rubric they started with.
-
-Stored AI assessments are tied to each criterion's definition, so editing a level description makes that criterion be graded again; unchanged criteria reuse their results.
-
-The grading prompt is `GRADING_SYSTEM_PROMPT` in `src/server/services/llm-grading.ts`. It assumes a 1-5 scale (the database enforces it too); adjust it if yours is different. When you change the prompt, increase `GRADING_PROMPT_VERSION` next to it: stored assessments are only reused for the same version.
-
-## Changing models
-
-Set the model variables in `.env.local` (see [Configuration](#configuration)) and restart. The grading model must reliably return JSON.
-
-Stored results record the model that produced them, so after switching a model the next run computes new results; nothing needs to be reset. Model names are Ollama tags: re-pulling a tag with different weights is not detected.
-
-## Data and resetting
-
-Everything is stored in `data/grading.db`. To back up, copy it while the app is stopped. To start fresh, stop the app and delete `data/grading.db*`.
-
-The schema is upgraded automatically on startup (see [docs/database.md](docs/database.md#migrations-and-schemasql)). Back up an existing database before running a new version. If existing data breaks a rule a new version enforces, the upgrade stops without changing anything and the error names the table and the problem.
-
-To clear stored model results of one kind (`ai_assessments`, `essay_summaries`, `essay_embeddings` or `topic_models`):
+## Checks
 
 ```bash
-node -e "require('better-sqlite3')('data/grading.db').exec('DELETE FROM ai_assessments')"
-```
-
-Each background run (Dashboard processing, AI grades in advance) is recorded in `pipeline_runs` with how many items succeeded and failed, so its outcome can be checked after the terminal output is gone.
-
-## Tests
-
-```bash
-npm test               # unit and integration tests (Vitest, in-memory SQLite, fake models)
-npm run test:python    # Python unit tests for the parts of the topic script without ML packages
-npm run smoke          # end-to-end checks against a running server; see tests/e2e/smoke.mjs
+npm test
+npm run test:python
 npm run lint
 npx tsc --noEmit
 ```
 
-None of these need Ollama or the Python ML packages. After adding a migration, run `npm run db:schema` to update `src/server/db/schema.sql` (a test fails until you do). See [docs/testing.md](docs/testing.md) for what each suite covers and how to check the model-dependent features.
+These checks use fake models or Python helpers and need no running Ollama service.
+[testing.md](docs/testing.md) covers HTTP smoke checks and manual model checks.
 
-## Known limitations
+## Limits and troubleshooting
 
-- **One machine, one grader at a time.** There is no login: anyone who can reach the server can open any session.
-- **Background work runs inside the web server.** No job queue; essays are processed one at a time and a run cannot be cancelled. A server restart marks a running run `interrupted`; start it again to continue.
-- **Local models are slow on small GPUs.** Grading all 24 DEMO essays in advance is 72 model calls, about an hour on a 4 GB GPU.
-- **Similarity compares every pair of essays in memory.** Fine for a class of essays, not for large collections.
-- **The score scale is 1–5.** It is written into the database checks and the grading prompt.
-- **Model output varies.** Results are stored and reused, but a new run of the same model may give a different score.
+- Intended for one local server and trusted users. There is no login or durable job queue.
+  Restarted work needs a new run; successful cached results can be reused.
+- Similarity compares every pair of essays; model calls run sequentially. Large sets are slow.
+- Evidence matching is permissive, and client event logging is best-effort. Review quotes and
+  research timing data before relying on them.
+- Model tags do not identify exact weights. Python preprocessing and CSV order can also affect
+  topics without changing their cache key. See [data-flow.md](docs/data-flow.md).
+- The build fetches a Google Font and needs network access on an uncached build.
 
-## Troubleshooting
-
-- **Topic step fails:** the reason is shown on the processing screen and in the terminal output prefixed with `[topics:py]`. Usually Python isn't found (set `TOPIC_PYTHON`) or the packages are installed in a different Python.
-- **Topic labelling fails with "Ollama returned HTTP 500":** usually not enough free memory to load `gemma2:9b` next to the other models. Close other programs and choose **Retry**; summaries already made are reused.
-- **Topic step fails while downloading the BGE model:** a dropped connection to Hugging Face. Choose **Retry**; once downloaded, the model is cached.
-- **"Model not found":** Ollama isn't running, or the model hasn't been pulled. Check with `ollama list`.
-- **Grading times out:** use a smaller model or raise `LLM_PRECOMPUTE_TIMEOUT_MS`. Failed essay/criterion pairs are reported on the processing screen; **Retry failed items** grades only those again.
-- **"Rubric … is already stored with different criteria or text":** the rubric files were changed without a new `RUBRIC_ID`; see [Changing the rubric](#changing-the-rubric).
-- **Essay set doesn't appear:** the file must be directly in `data/` and named `subset_<NAME>.csv` (letters, numbers, `-`, `_`).
+For topic failures, check `TOPIC_PYTHON`, imports in that environment and `[topics:py]` output.
+For Ollama errors, check that it is running and `ollama list` contains the configured models;
+read the error body for load or memory failures. Raise a timeout only if the model needs more
+time. Saved failure reasons and counts are in `pipeline_runs` and failed `ai_assessments`.

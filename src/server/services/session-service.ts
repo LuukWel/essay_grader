@@ -50,7 +50,7 @@ export function createSessionWithEssays(input: SessionInput, source: EssaySource
       input.useCachedAssessments, input.assessmentType, input.assessmentLength,
     );
     for (const row of parsed.rows) {
-      createEssay(sessionId, `essay-${row.sourceId}`, source.csvPath, row.essay, row.wordCount, row.prompt);
+      createEssay(sessionId, row.sourceId, source.csvPath, row.essay, row.wordCount, row.prompt);
     }
     return sessionId;
   });

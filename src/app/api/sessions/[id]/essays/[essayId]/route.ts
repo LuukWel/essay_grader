@@ -45,7 +45,7 @@ export async function PATCH(
     const { grading, isFlagged, topic } = input.value;
 
     if (grading) {
-      updateEssayGrade(essayId, grading.status, grading.overallGrade ?? undefined);
+      updateEssayGrade(essayId, grading.status);
     }
     if (isFlagged !== undefined) {
       updateEssayFlag(essayId, isFlagged);
@@ -55,7 +55,7 @@ export async function PATCH(
       assignTopic(id, essayId, topic.topicId, 'manual');
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, essay: getEssay(essayId) });
   } catch (err) {
     console.error('[api/essays/[essayId] PATCH]', err);
     return NextResponse.json({ error: 'Failed to update essay' }, { status: 500 });

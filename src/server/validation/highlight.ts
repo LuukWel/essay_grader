@@ -39,7 +39,7 @@ export function validateHighlightInput(
   }
   const start = startIndex as number;
   const end = endIndex as number;
-  const content = essay.value.pdf_content;
+  const content = essay.value.essay_text;
   if (start < 0 || end <= start || end > content.length) {
     return invalid(`Highlight range must satisfy 0 <= startIndex < endIndex <= ${content.length}`);
   }

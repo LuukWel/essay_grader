@@ -29,10 +29,12 @@ export function loadExportRows(sessionIds: string[]): ExportRows {
       WHERE rc.rubric_id IN (SELECT rubric_id FROM sessions WHERE id IN (${ph}))
       ORDER BY rc.rubric_id, rc.position`),
     essays: all(`
-      SELECT e.id, e.session_id, e.filename, e.word_count, e.grading_status, e.overall_grade, e.summary,
+      SELECT e.id, e.session_id, e.dataset_essay_id, 'essay-' || e.dataset_essay_id AS filename,
+             e.word_count, e.grading_status, s.overall_grade, e.summary,
              ct.topic_id, ct.source AS topic_source, e.is_flagged
       FROM essays e LEFT JOIN essay_current_topics ct ON ct.essay_id = e.id
-      WHERE e.session_id IN (${ph}) ORDER BY e.session_id, e.filename`),
+      JOIN essay_scores s ON s.essay_id = e.id
+      WHERE e.session_id IN (${ph}) ORDER BY e.session_id, e.dataset_essay_id`),
     topicAssignments: all(`
       SELECT session_id, essay_id, topic_id, source, assigned_at
       FROM topic_assignments WHERE session_id IN (${ph}) ORDER BY session_id, id`),

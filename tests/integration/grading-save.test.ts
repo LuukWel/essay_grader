@@ -26,7 +26,7 @@ beforeAll(() => {
 
 describe('upsertGrade', () => {
   it('inserts once and updates in place, keeping fields that were not sent', () => {
-    upsertGrade(sessionId, essayId, 1, { ai_score: 3, ai_justification: 'AI says 3', original_ai_score: 3 });
+    upsertGrade(sessionId, essayId, 1, { ai_score: 3, ai_justification: 'AI says 3' });
     upsertGrade(sessionId, essayId, 1, { teacher_score: 4 });
     upsertGrade(sessionId, essayId, 1, { teacher_justification: 'Good argument' });
 
@@ -47,7 +47,7 @@ describe('upsertGrade', () => {
   });
 
   it('lets the database reject an out-of-range score', () => {
-    expect(() => upsertGrade(sessionId, essayId, 3, { teacher_score: 9 })).toThrow('CHECK constraint failed');
+    expect(() => upsertGrade(sessionId, essayId, 3, { teacher_score: 9 })).toThrow('score outside criterion range');
     expect(getGrades(sessionId, essayId)).toHaveLength(1);
   });
 });
@@ -83,5 +83,14 @@ describe('saveGrade (grading service)', () => {
     } finally {
       getDb().exec('DROP TRIGGER fail_rank_log');
     }
+  });
+
+  it('refreshes averages and rank history when an AI score is cleared', () => {
+    const before = rankLogs();
+    saveGrade(sessionId, { essayId, criterion: organization, fields: { ai_score: null } });
+    expect(getEssaysBySession(sessionId)[0].avg_ai_score).toBe(3);
+    expect(rankLogs()).toBe(before + 1);
+    expect(getGrades(sessionId, essayId).find((g) => g.criterion_name === 'Organization'))
+      .toMatchObject({ ai_score: null, original_ai_score: 4, teacher_score: 2 });
   });
 });

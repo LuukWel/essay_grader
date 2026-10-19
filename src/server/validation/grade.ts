@@ -14,7 +14,6 @@ import {
 export interface GradeFields {
   teacher_score?: number | null;
   ai_score?: number | null;
-  original_ai_score?: number | null;
   teacher_justification?: string | null;
   ai_justification?: string | null;
   evidence_json?: string | null;
@@ -27,7 +26,7 @@ export interface GradeUpdate {
   fields: GradeFields;
 }
 
-const SCORE_FIELDS = ['teacher_score', 'ai_score', 'original_ai_score'] as const;
+const SCORE_FIELDS = ['teacher_score', 'ai_score'] as const;
 const TEXT_FIELDS = ['teacher_justification', 'ai_justification'] as const;
 
 /** Validates POST /api/sessions/[id]/grades against the session's criteria. */

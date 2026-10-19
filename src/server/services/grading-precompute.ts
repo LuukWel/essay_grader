@@ -12,7 +12,7 @@ import { GRADING_PROMPT_VERSION, criterionHash, gradeCriterion } from '@/server/
 import { logAction } from '@/server/db/action-logs';
 import { getAssessment, saveAssessmentFailure, saveAssessmentSuccess, type AssessmentInputs } from '@/server/db/caches';
 import { getDb } from '@/server/db/client';
-import { computeQualityRanks, datasetId, getEssaysBySession, updateEssayAiQuality, type Essay } from '@/server/db/essays';
+import { computeQualityRanks, datasetId, getEssaysBySession, type Essay } from '@/server/db/essays';
 import { getGradeForCriterion, upsertGrade } from '@/server/db/grades';
 import { getRubricCriteria } from '@/server/db/rubrics';
 import {
@@ -77,7 +77,7 @@ export function startGradingPrecompute(sessionId: string, deps: PrecomputeDeps =
     sessionId,
     type: 'grading_precompute',
     instanceId: INSTANCE_ID,
-    inputHash: runInputHash(essays.map((e) => ({ id: datasetId(e), text: e.pdf_content })), config),
+    inputHash: runInputHash(essays.map((e) => ({ id: datasetId(e), text: e.essay_text })), config),
     config,
     expectedItems: essays.length * criteria.length,
   });
@@ -141,7 +141,7 @@ async function precomputeItem(
   if (existing?.ai_score != null) return { ok: true };
 
   const identity = {
-    contentHash: contentHash(essay.pdf_content),
+    contentHash: contentHash(essay.essay_text),
     criterionHash: criterionHash(criterion),
     model: deps.model,
     promptVersion: GRADING_PROMPT_VERSION,
@@ -157,7 +157,7 @@ async function precomputeItem(
   } else {
     try {
       const reply = await deps.grade(
-        { essayContent: essay.pdf_content, criterion, assessmentType: session.assessment_type, assessmentLength: session.assessment_length },
+        { essayContent: essay.essay_text, criterion, assessmentType: session.assessment_type, assessmentLength: session.assessment_length },
         AbortSignal.timeout(deps.timeoutMs),
       );
       const checked = validateAssessment(reply, criterion);
@@ -173,15 +173,13 @@ async function precomputeItem(
     }
   }
 
-  // Update the grade and the essay's average AI score together.
+  // SQLite retains the first AI score; averages are calculated when read.
   getDb().transaction(() => {
     upsertGrade(session.id, essay.id, criterion.id, {
       ai_score: assessment.score,
-      original_ai_score: assessment.score,
       ai_justification: assessment.justification,
       evidence_json: assessment.evidenceJson,
     });
-    updateEssayAiQuality(essay.id, session.id);
   })();
   return { ok: true };
 }

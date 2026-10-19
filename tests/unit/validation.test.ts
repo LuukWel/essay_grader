@@ -9,8 +9,8 @@ import { RUBRIC_CRITERIA as criteria } from '@/lib/llm-config';
 
 const ESSAY_TEXT = 'School uniforms should be optional. They limit self-expression.';
 const essays: Record<string, EssayRef> = {
-  'essay-1': { id: 'essay-1', session_id: 'session-A', pdf_content: ESSAY_TEXT },
-  'essay-2': { id: 'essay-2', session_id: 'session-B', pdf_content: 'Another session.' },
+  'essay-1': { id: 'essay-1', session_id: 'session-A', essay_text: ESSAY_TEXT },
+  'essay-2': { id: 'essay-2', session_id: 'session-B', essay_text: 'Another session.' },
 };
 const getEssay: EssayLookup = (id) => essays[id] ?? null;
 const ctx = { sessionId: 'session-A', getEssay, criteria };

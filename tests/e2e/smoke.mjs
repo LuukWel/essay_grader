@@ -74,6 +74,26 @@ check('partial update keeps the score', g2.json?.grade?.teacher_score === 4 && g
 const g3 = await call('POST', `/api/sessions/${sessionId}/grades`, { essayId: e1.id, criterionName: 'Content', criterionId: 1, teacher_score: 7 });
 check('out-of-range score rejected with 400', g3.status === 400, g3.json?.error);
 
+// The server owns the original AI score and calculated averages.
+const aiFirst = await call('POST', `/api/sessions/${sessionId}/grades`, {
+  essayId: e1.id, criterionName: 'Content', criterionId: 1, ai_score: 3, original_ai_score: 5,
+});
+check('first AI score comes from the saved score', aiFirst.json?.grade?.original_ai_score === 3);
+const aiRevised = await call('POST', `/api/sessions/${sessionId}/grades`, {
+  essayId: e1.id, criterionName: 'Content', criterionId: 1, ai_score: 4, original_ai_score: 1,
+});
+check('revising AI preserves its original and the teacher score', aiRevised.json?.grade?.original_ai_score === 3
+  && aiRevised.json?.grade?.ai_score === 4 && aiRevised.json?.grade?.teacher_score === 4);
+const scored = await call('GET', `/api/sessions/${sessionId}/essays/${e1.id}`);
+check('essay detail exposes source fields and calculated averages', scored.json?.essay?.dataset_essay_id
+  && typeof scored.json?.essay?.essay_text === 'string' && scored.json?.essay?.avg_ai_score === 4);
+await call('POST', `/api/sessions/${sessionId}/grades`, {
+  essayId: e1.id, criterionName: 'Content', criterionId: 1, ai_score: null,
+});
+const cleared = await call('GET', `/api/sessions/${sessionId}/essays/${e1.id}`);
+check('clearing AI immediately clears its mean and preserves its original', cleared.json?.essay?.avg_ai_score === null
+  && cleared.json?.grades?.find((g) => g.criterion_id === 1)?.original_ai_score === 3);
+
 // A second session, to test cross-session access
 const other = await call('POST', '/api/sessions', { participantId: 'SMOKE-2', condition: 'baseline', essaySet: 'DEMO', precomputeGrades: false });
 const foreign = await call('POST', `/api/sessions/${other.json.sessionId}/grades`, {
@@ -96,9 +116,10 @@ const bl = await call('GET', `/api/sessions/${sessionId}/benchmarks?criterion=Co
 check('benchmark set and listed with its essay', b.status === 200 && bl.json?.benchmarks?.[0]?.filename === e1.filename);
 
 // Essay completion and research log
-const done = await call('PATCH', `/api/sessions/${sessionId}/essays/${e1.id}`, { grading_status: 'graded', overall_grade: 4 });
+const done = await call('PATCH', `/api/sessions/${sessionId}/essays/${e1.id}`, { grading_status: 'graded', overall_grade: 5 });
 const doneBad = await call('PATCH', `/api/sessions/${sessionId}/essays/${e1.id}`, { grading_status: 'finished' });
 check('essay marked graded; unknown status rejected', done.status === 200 && doneBad.status === 400);
+check('completion returns the saved teacher mean, ignoring the client average', done.json?.essay?.overall_grade === 4);
 const log = await call('POST', '/api/logs', { sessionId, actionType: 'essay_opened', essayId: e1.id, actionDetail: { source: 'smoke' } });
 const logBad = await call('POST', '/api/logs', { sessionId: 'no-such-session', actionType: 'essay_opened' });
 check('research event logged; unknown session gets 404', log.status === 200 && logBad.status === 404);

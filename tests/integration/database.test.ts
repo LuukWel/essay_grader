@@ -34,10 +34,10 @@ function seed(db: Database.Database) {
     INSERT INTO sessions (id, participant_id, condition, essay_set, rubric_id)
       VALUES ('S1', 'P1', 'dashboard', 'X', 'R1'), ('S2', 'P2', 'baseline', 'X', 'R1');
     INSERT INTO topics (id, session_id, topic_index, keywords) VALUES (1, 'S1', 0, '[]');
-    INSERT INTO essays (id, session_id, filename, pdf_path, pdf_content) VALUES
-      ('E1', 'S1', 'essay-1', 'x.csv', 'text one'),
-      ('E2', 'S1', 'essay-2', 'x.csv', 'text two'),
-      ('E3', 'S2', 'essay-1', 'x.csv', 'text one');
+    INSERT INTO essays (id, session_id, dataset_essay_id, source_path, essay_text) VALUES
+      ('E1', 'S1', '1', 'x.csv', 'text one'),
+      ('E2', 'S1', '2', 'x.csv', 'text two'),
+      ('E3', 'S2', '1', 'x.csv', 'text one');
   `);
 }
 
@@ -112,14 +112,14 @@ describe('constraints', () => {
   });
 
   it('keeps scores in the 1-5 range, allowing null for "not scored yet"', () => {
-    expect(() => insertGrade('E1', 'S1', 6)).toThrow('CHECK constraint failed');
-    expect(() => insertGrade('E2', 'S1', 0)).toThrow('CHECK constraint failed');
+    expect(() => insertGrade('E1', 'S1', 6)).toThrow('score outside criterion range');
+    expect(() => insertGrade('E2', 'S1', 0)).toThrow('score outside criterion range');
     expect(() => insertGrade('E2', 'S1', null)).not.toThrow();
   });
 
   it('allows one essay per dataset ID per session', () => {
-    expect(() => db.exec(`INSERT INTO essays (id, session_id, filename, pdf_path, pdf_content)
-                          VALUES ('E4', 'S1', 'essay-1', 'x.csv', 'dup')`)).toThrow('UNIQUE constraint failed');
+    expect(() => db.exec(`INSERT INTO essays (id, session_id, dataset_essay_id, source_path, essay_text)
+                          VALUES ('E4', 'S1', '1', 'x.csv', 'dup')`)).toThrow('UNIQUE constraint failed');
   });
 
   it('only assigns topics of the essay\'s own session, and keeps every assignment', () => {
@@ -172,8 +172,9 @@ describe('constraints', () => {
 describe('query plans', () => {
   // Main per-session queries; none should scan a table or sort.
   const queries: [string, string][] = [
-    ['essays of a session with their current topic', `SELECT e.*, ct.topic_id FROM essays e
-      LEFT JOIN essay_current_topics ct ON ct.essay_id = e.id WHERE e.session_id = ? ORDER BY e.filename`],
+    ['essays of a session with their current topic and scores', `SELECT e.*, ct.topic_id, s.overall_grade, s.avg_ai_score FROM essays e
+      LEFT JOIN essay_current_topics ct ON ct.essay_id = e.id JOIN essay_scores s ON s.essay_id = e.id
+      WHERE e.session_id = ? ORDER BY e.dataset_essay_id`],
     ['grades of an essay', `SELECT g.*, rc.name FROM grades g JOIN rubric_criteria rc USING (rubric_id, criterion_id)
       WHERE g.session_id = ? AND g.essay_id = ?`],
     ['criteria of a rubric', 'SELECT * FROM rubric_criteria WHERE rubric_id = ? ORDER BY position'],
@@ -260,8 +261,8 @@ describe('migrate on a database from before migrations', () => {
       id: 'S1', rubric_id: 'essay-v1', processing_status: 'pending',
       assessment_type: 'flow', assessment_length: 'medium', precompute_grades: 1,
     });
-    expect(db.prepare("SELECT grading_status, overall_grade, avg_ai_score FROM essays WHERE id = 'E1'").get())
-      .toEqual({ grading_status: 'graded', overall_grade: 3.5, avg_ai_score: null });
+    expect(db.prepare("SELECT e.grading_status, s.overall_grade, s.avg_ai_score FROM essays e JOIN essay_scores s ON s.essay_id = e.id WHERE e.id = 'E1'").get())
+      .toEqual({ grading_status: 'graded', overall_grade: 4, avg_ai_score: 3 });
     expect(db.prepare("SELECT grading_status FROM essays WHERE id = 'E2'").get()).toEqual({ grading_status: 'pending' });
     expect(db.prepare('SELECT rubric_id, criterion_id, teacher_score, ai_score FROM grades').get())
       .toEqual({ rubric_id: 'essay-v1', criterion_id: 1, teacher_score: 4, ai_score: 3 });

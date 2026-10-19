@@ -21,7 +21,7 @@ function splitIntoParagraphs(content: string): string[] {
 interface EssayDetail {
   id: string;
   filename: string;
-  pdf_content: string;
+  essay_text: string;
   essay_prompt: string | null;
   summary: string | null;
 }
@@ -128,7 +128,7 @@ function EssayPane({
                 </p>
               </div>
             )}
-            {splitIntoParagraphs(data.essay.pdf_content).map((para, i) => (
+            {splitIntoParagraphs(data.essay.essay_text).map((para, i) => (
               <p
                 key={i}
                 className="mb-4 last:mb-0 whitespace-pre-wrap font-serif text-sm leading-7 text-gray-800 dark:text-slate-200"

@@ -35,7 +35,7 @@ it('schema.sql matches the schema the migrations create', async () => {
     const i = TABLE_ORDER.indexOf(table);
     return i === -1 ? TABLE_ORDER.length : i;
   };
-  const typeRank = { table: 0, view: 1, index: 2 } as Record<string, number>;
+  const typeRank = { table: 0, view: 1, index: 2, trigger: 3 } as Record<string, number>;
   objects.sort((a, b) => typeRank[a.type] - typeRank[b.type]
     || rank(a.tbl_name) - rank(b.tbl_name) || a.name.localeCompare(b.name));
 

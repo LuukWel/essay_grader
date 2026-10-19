@@ -1,140 +1,78 @@
 # Architecture
 
-## Overview
+One Next.js application serves the React UI and HTTP API. Model calls go to Ollama;
+live topic generation runs a Python subprocess. SQLite stores application and research data.
 
 ```text
-Teacher / researcher
-        │
-        ▼
-React / Next.js UI              src/app/page.tsx, src/components/
-        │  fetch()
-        ▼
-Next.js API routes              src/app/api/              HTTP in/out, call validation and services
-        │
-        ├──► Validation          src/server/validation/    request bodies, CSV files, model output
-        ▼
-Services                        src/server/services/      workflows: session import, grade saving,
-        │                                                 cohort processing, AI grading precompute
-   ┌────┴─────────────┐
-   ▼                  ▼
-Data access         Integrations
-src/server/db/      src/server/integrations/
-(all SQL)            ├─ ollama.ts         HTTP to Ollama (chat, embeddings)
-   │                 └─ topic-python.ts   child process: python/topic_model.py
-   ▼
-SQLite (data/grading.db)
+React components -> HTTP routes -> validators / services
+                                       |          |
+                                       v          v
+                                  DB modules   integrations
+                                       |          |-- Ollama HTTP
+                                       v          `-- Python topic script
+                                     SQLite            `-- Ollama labels
 ```
 
+## Code map
 
-## Where to find things
-
-| | |
+| Path | Responsibility |
 |---|---|
-| HTTP endpoints | `src/app/api/` |
-| Workflows | `src/server/services/` |
-| SQL and migrations | `src/server/db/`; the full schema as SQL in `src/server/db/schema.sql` |
-| Rubric definition | `src/lib/llm-config.ts` (id and criteria), `data/rubric/rubric.txt` (text) |
-| Ollama and the Python topic model | `src/server/integrations/`, `python/` |
-| Input checks | `src/server/validation/` |
-| Essay sets, rubric | `data/`, read by `src/server/files/` |
-| UI | `src/app/page.tsx`, `src/components/`, `src/hooks/` |
-| Shared and browser helpers | `src/lib/` |
+| `src/app/page.tsx` | Switches between setup, processing, lists, grading and analytics on `/` |
+| `src/app/layout.tsx`, `globals.css` | Page shell, font, theme and global styling |
+| `src/app/api/**/route.ts` | HTTP handlers: parse requests, return JSON or export files |
+| `src/components/` | Setup/navigation plus `grading/`, `cohort/`, `analytics/` and shared `ui/` components |
+| `src/hooks/use-session.ts` | Browser session restore and recorder/logger lifecycle |
+| `src/server/validation/` | Session, CSV, grade, highlight, benchmark, essay-update and precompute-output checks |
+| `src/server/services/` | Import, grade saving, cohort processing, precompute and model prompts/cache lookup |
+| `src/server/db/` | Connection, queries, migrations and generated `schema.sql` |
+| `src/server/files/` | Essay-set discovery, rubric reads and optional research-topic CSV |
+| `src/server/integrations/` | Ollama transport and Python subprocess adapter |
+| `src/lib/` | Browser HTTP/logging/CSV helpers, rubric constants, hashes, quote checks and similarity math |
+| `src/types/` | Shared TypeScript interfaces; these do not validate runtime data |
+| `python/topic_model.py` | BGE embeddings, KMeans, cluster-document TF-IDF and Gemma labels |
 
+`src/app` follows Next.js routing conventions. `page.tsx` renders a page; `route.ts` exports
+HTTP methods. `[id]` is a variable URL segment. Components elsewhere do not create URLs.
 
-### API routes (`src/app/api/`)
+## HTTP API
 
-| Route | Purpose |
-|---|---|
-| `POST /api/sessions` | Create (or resume) a session and import its essays from a CSV; returns the rubric text and criteria. |
-| `GET/PATCH /api/sessions/[id]` | Session state, rubric criteria, essays, topics, stats, progress and latest runs; mark complete. |
-| `POST /api/sessions/[id]/process` | Start the cohort pipeline in the background. |
-| `POST/GET /api/sessions/[id]/precompute` | Start / poll AI grade precompute. |
-| `GET/POST /api/sessions/[id]/grades` | Read / update grades for one essay. |
-| `GET/POST/DELETE /api/sessions/[id]/highlights` | Teacher text highlights. |
-| `GET/POST/DELETE /api/sessions/[id]/benchmarks` | Benchmark essays per criterion and score. |
-| `GET/PATCH /api/sessions/[id]/essays/[essayId]` | One essay; update status, flag, topic (appended to the topic history). |
-| `GET .../essays/[essayId]/similar` | Top-5 similar essays. |
-| `GET /api/sessions/[id]/rank-history` | Quality-rank snapshots from `action_logs`. |
-| `POST /api/llm` | Interactive model calls: `gradeSingleCriterion`, `reviseCriterionScore`. |
-| `POST /api/logs` | Append a research event. |
-| `GET /api/export`, `/api/export/all` | CSV / JSON export of logs and results. |
-| `GET/DELETE /api/cache/topics` | Stored topic models for a set's current essays / clear them. |
-| `GET /api/essay-sets` | List available `data/subset_<NAME>.csv` sets. |
-| `GET /api/instance` | Server process ID, so the client can detect a restart. |
+Paths below are relative to `/api`. There are 17 route files and 26 handlers.
 
-
-### Validation (`src/server/validation/`)
-
-Runtime checks on everything that comes from outside: request bodies (`session.ts`,
-`grade.ts`, `highlight.ts`, `benchmark.ts`, `essay.ts`), essay CSV files (`essay-import.ts`)
-and model replies (`model-output.ts`). Each returns either a typed value or an error with
-an HTTP status; nothing is written until the input is valid. Criteria are checked against
-the session's own rubric, which the routes load from the database (`getSessionCriteria`).
-
-### Services (`src/server/services/`)
-
-| Service | Workflow |
-|---|---|
-| `session-service.ts` | Validate the whole CSV, then store the rubric (if new), the session and its essays in one transaction. |
-| `grading-service.ts` | Save a teacher's grade with what depends on it (essay status, average AI score, rank snapshot) in one transaction. |
-| `cohort-processing.ts` | Summaries → topics (as model topic assignments) → embeddings (dimension-checked) → similarities, recorded as a pipeline run. |
-| `grading-precompute.ts` | AI assessment for every essay × criterion of the session's rubric, recorded as a pipeline run. |
-| `llm-grading.ts` | The grading and score-revision prompts, their version, and clean-up of the model's JSON. |
-| `topic-model.ts` | Topic model lookup by input identity, computed through the Python integration when missing. |
-
-The two pipelines run in the background of the Node process. Their model calls and the topic
-model are passed in as dependencies, so tests run them with fakes. Each run is a row in
-`pipeline_runs` with expected / processed / failed counts and a final status (`success`,
-`partial`, `failed`, `interrupted`). A unique index allows one running run per session and
-pipeline.
-
-### Data access (`src/server/db/`)
-
-Opens SQLite (WAL, `foreign_keys = ON`), applies versioned migrations on first use, and
-provides one function per query, grouped per table. All SQL lives here. See
-[database.md](database.md).
-
-### Integrations (`src/server/integrations/`)
-
-| | `ollama.ts` | `topic-python.ts` |
+| Path | Methods | Purpose |
 |---|---|---|
-| Does | Base URL and model names; streamed chat (NDJSON); embeddings; timeouts via `AbortSignal`. | Starts `python/topic_model.py`: JSON job on stdin, JSON result on stdout, progress on stderr; 15-minute timeout. |
-| Checks | Error frames, truncated streams and invalid embeddings raise errors; an unreachable server is reported with its address. | The result must have 1..k labelled topics and a valid topic for every essay. |
-| Can fail when | Ollama is not running, a model is not pulled, a call times out, a reply is not JSON. | Python or its packages are missing, the BGE model cannot be downloaded, Ollama fails while labelling, the run times out. |
+| `/sessions` | POST | Create or resume a session |
+| `/sessions/[id]` | GET, PATCH | Session snapshot; mark complete |
+| `/sessions/[id]/process` | POST | Start cohort processing |
+| `/sessions/[id]/precompute` | GET, POST | Poll/start AI precompute |
+| `/sessions/[id]/grades` | GET, POST | Read/save criterion grades |
+| `/sessions/[id]/essays/[essayId]` | GET, PATCH | Read essay; change status, flag or topic |
+| `/sessions/[id]/essays/[essayId]/similar` | GET | Read five nearest essays |
+| `/sessions/[id]/highlights` | GET, POST, DELETE | Teacher text spans |
+| `/sessions/[id]/benchmarks` | GET, POST, DELETE | Benchmark score slots |
+| `/sessions/[id]/rank-history` | GET | Rank snapshots |
+| `/llm` | POST | Interactive grading and score revision |
+| `/logs` | POST | Research event |
+| `/export`, `/export/all` | GET each | Action-log CSV; selected research JSON |
+| `/cache/topics` | GET, DELETE | List current-input cached k values; clear topic cache |
+| `/essay-sets`, `/instance` | GET each | Available sets; server-instance identity |
 
-Prompts live with the code that uses them (`llm-grading.ts` for grading, the cohort service
-for summaries), each with a version number that is part of the stored result's identity.
+## Boundaries
 
-## Design notes
+Routes use runtime validators for application writes. The interactive `/llm` route checks
+the action but casts its payload without a full schema check; model-output validation is
+stronger in precompute. Some read routes return empty lists for absent resources.
 
-- **Stored model results are identified by their inputs**: essay text hash, model, prompt
-  version, criterion definition and preprocessing (`src/lib/cache-key.ts`). The dataset essay
-  ID is not part of the identity.
-- **Partial results are explicit.** One failed essay does not stop a pipeline; the run ends
-  `partial`, the processing screen lists what failed, and **Retry failed items** redoes only
-  what is missing, reusing stored results.
-- **Failures are recorded, not reused.** A failed AI assessment is stored with its error and
-  attempt count, and asked again on the next run.
-- **The database enforces the data model.** Foreign keys include the session (and, for
-  criteria, the rubric), so a row cannot point at another session's essay or at a criterion
-  outside the session's rubric. Validation gives clear errors first; the constraints are the
-  guarantee.
-- **Rubrics are versioned reference data.** A stored rubric never changes; a changed rubric
-  gets a new id, and each session keeps the one it started with.
-- **History is appended, not overwritten.** Topic assignments keep the model's choice and
-  every teacher correction; research events and pipeline runs are append-only too.
-- **Migrations do not delete data.** A migration that meets rows breaking a new rule, or rows
-  it cannot carry over without guessing, stops and changes nothing; cache tables whose rows
-  cannot be given an input-based key are kept as `legacy_*`.
-- **Quote checking** (`src/lib/hallucination-utils.ts`) counts an AI evidence quote as found
-  when it appears in the essay exactly, as a run of at least three words, or with a fuzzy
-  similarity of at least 0.7.
+`getDb()` opens SQLite lazily, enables WAL/FKs and applies migrations. Services use short
+transactions for related writes; model requests run outside those transactions.
 
-## Known limitations
+Ollama chat is streamed as NDJSON, then buffered into a complete reply before the browser
+receives it. Precompute supplies an abort timeout; interactive grading and summaries do not.
+The Python adapter sends JSON on stdin, reads JSON from stdout, forwards stderr progress,
+validates assignments and kills the child after the configured timeout (default 15 minutes).
 
-- One machine, one teacher at a time, no authentication. Background jobs run inside the web
-  server process.
-- Similarity compares every pair of essays in memory, which suits a class of essays, not
-  large collections.
-- `next build` warns that the whole project is traced, because the topic integration starts
-  a process whose executable comes from `TOPIC_PYTHON`. Running the app is not affected.
+Both background pipelines run inside Node. `pipeline_runs` records counts and outcomes;
+a partial unique index allows one running row per session/pipeline. Another process's running
+row is treated as interrupted on lookup/start, so multiple live server processes are unsupported.
+
+See [data-flow.md](data-flow.md) for workflows, [database.md](database.md) for storage and
+[testing.md](testing.md) for checks.

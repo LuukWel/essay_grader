@@ -1,10 +1,10 @@
 // Saves a grade from the grading screen. In the same transaction it marks the essay as in
-// progress (when a teacher score is set) and, when an AI score is set, updates the essay's
-// average AI score and logs a rank snapshot. Input is validated in validation/grade.ts.
+// progress (when a teacher score is set) and logs a rank snapshot when an AI score changes.
+// Averages are read from essay_scores. Input is validated in validation/grade.ts.
 
 import { logAction } from '@/server/db/action-logs';
 import { getDb } from '@/server/db/client';
-import { computeQualityRanks, markEssayInProgress, updateEssayAiQuality } from '@/server/db/essays';
+import { computeQualityRanks, markEssayInProgress } from '@/server/db/essays';
 import { getGradeForCriterion, upsertGrade, type Grade } from '@/server/db/grades';
 import { getSession } from '@/server/db/sessions';
 import type { GradeUpdate } from '@/server/validation/grade';
@@ -21,8 +21,7 @@ export function saveGrade(sessionId: string, update: GradeUpdate): Grade {
       markEssayInProgress(sessionId, essayId);
     }
 
-    if (fields.ai_score != null) {
-      updateEssayAiQuality(essayId, sessionId);
+    if (fields.ai_score !== undefined) {
       const session = getSession(sessionId);
       if (session) {
         logAction(sessionId, session.participant_id, session.condition, session.essay_set,

@@ -11,7 +11,7 @@ export const valid = <T>(value: T): Validated<T> => ({ ok: true, value });
 export const invalid = (error: string, status: 400 | 404 = 400): Validated<never> => ({ ok: false, status, error });
 
 /** The essay fields validation needs; routes pass a lookup backed by the database. */
-export type EssayRef = Pick<Essay, 'id' | 'session_id' | 'pdf_content'>;
+export type EssayRef = Pick<Essay, 'id' | 'session_id' | 'essay_text'>;
 export type EssayLookup = (essayId: string) => EssayRef | null;
 
 /** Max length of free-text fields such as justifications. */
