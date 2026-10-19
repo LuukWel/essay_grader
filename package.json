@@ -1,0 +1,38 @@
+{
+  "name": "essay-grader-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:python": "python -m unittest discover -s python",
+    "db:schema": "vitest run tests/integration/schema.test.ts --update",
+    "smoke": "node tests/e2e/smoke.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.0.1",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  }
+}

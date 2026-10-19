@@ -1,0 +1,16 @@
+# Python packages for the topic grouping script (python/topic_model.py).
+# Only needed for the Dashboard condition. Python 3.11+ (required by scikit-learn 1.9).
+#
+# Exact versions of a working environment (Python 3.11.7, Windows). torch is pulled in by
+# sentence-transformers; on Windows pip installs the CPU build.
+sentence-transformers==6.1.0
+scikit-learn==1.9.1
+torch==2.14.1
+transformers==5.20.1
+numpy==2.4.6
+scipy==1.17.1
+
+# Optional: lemmatised keywords. Without spaCy the script uses scikit-learn stopwords, which
+# gives slightly different topic keywords; the script reports which one it used
+# ("meta.preprocessing" in its output).
+#   pip install spacy && python -m spacy download en_core_web_sm

@@ -1,0 +1,6 @@
+id,prompt,essay
+I01,Uniforms,A valid essay.
+I02,Uniforms,
+,Phones,An essay without an id.
+I01,Phones,An essay that reuses an id.
+I05,Phones,Too,many,fields
